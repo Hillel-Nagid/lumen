@@ -1,0 +1,11 @@
+C:\Users\hnweb\Documents\sideprojects\lumen\target\debug\deps\console-47d1e7117208b185.d: C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\lib.rs C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\common_term.rs C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\kb.rs C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\term.rs C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\utils.rs C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\windows_term\mod.rs C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\ansi.rs
+
+C:\Users\hnweb\Documents\sideprojects\lumen\target\debug\deps\libconsole-47d1e7117208b185.rmeta: C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\lib.rs C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\common_term.rs C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\kb.rs C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\term.rs C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\utils.rs C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\windows_term\mod.rs C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\ansi.rs
+
+C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\lib.rs:
+C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\common_term.rs:
+C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\kb.rs:
+C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\term.rs:
+C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\utils.rs:
+C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\windows_term\mod.rs:
+C:\Users\hnweb\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\console-0.15.11\src\ansi.rs:
