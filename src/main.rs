@@ -16,18 +16,12 @@ fn main() -> anyhow::Result<()> {
 // ── Tracing initialisation ────────────────────────────────────────────────────
 
 fn init_tracing(args: &Args) {
-    let level = if args.quiet {
-        "error"
-    } else if args.verbose {
-        "debug"
-    } else {
-        "warn"
-    };
+    let level: &str = if args.quiet { "error" } else if args.verbose { "debug" } else { "warn" };
 
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(level));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
 
-    tracing_subscriber::fmt()
+    tracing_subscriber
+        ::fmt()
         .with_env_filter(env_filter)
         .with_writer(std::io::stderr)
         .with_target(false)
