@@ -59,17 +59,17 @@ This roadmap closes those gaps in an order that keeps the main pipeline working 
 
 ### Theme A — Unblock the vertical slice (M1)
 
-| ID | Title | Spec | Size | Notes / acceptance |
-|----|--------|------|------|---------------------|
-| **A1** | Implement `DrainShard::insert` (tokenise, prefix tree walk, Jaccard match, new cluster, `max_children` wildcarding) | §7.1–7.4 | **L** | Split across A1a/A1b if needed: (1) tokenise + tree navigation + new template; (2) similarity update + wildcard rules. Must respect `depth`, `sim_threshold`, `max_children`. |
-| **A2** | Wire `Parser::detect_format` in `run_log_mode`: sample first 1000 non-empty lines, set format hint | §5.1 | **M** | Until A3–A6 exist, detection can return `Raw` after scaffolding; must not panic. |
-| **A3** | Replace `FormatHint::detect` `todo!` with heuristic scoring (JSON line ratio, `=`, syslog PRI, CLF patterns) | §5.1 | **M** | Lock format after sample; per-line fallback to raw as spec states. |
-| **A4** | Minimal `Compressor::compress`: map `ScoredTemplate` → `CompressedEntry` (pattern string, count, promotion, empty slots) | §9.1 (minimal) | **S** | No slot statistics yet; enough for formatter to print. |
-| **A5** | Implement `Formatter::render_text` for log mode per §10.2 (header, sections NEW/ANOMALY/NORMAL, truncation line) | §10.2 | **M** | Match structure in spec example; include run stats line when `verbose`. |
-| **A6** | Wire post-run: `extract_run_counts` → `Scorer::flush_to_cms` → `StateStore::save_cms` + `save_meta` (extend meta to match §14 schema if needed) | §8, §14 | **M** | Use wall-clock `now` for decay; skip if `--no-state`. |
-| **A7** | End-to-end integration test: small fixture log → non-empty text output, no panic | §16 | **S** | Golden file optional in A7; can be follow-up. |
+| ID | Status | Title | Spec | Size | Notes / acceptance |
+|----|--------|-------|------|------|---------------------|
+| **A1** | ✅ Complete | Implement `DrainShard::insert` (tokenise, prefix tree walk, Jaccard match, new cluster, `max_children` wildcarding) | §7.1–7.4 | **L** | Split across A1a/A1b if needed: (1) tokenise + tree navigation + new template; (2) similarity update + wildcard rules. Must respect `depth`, `sim_threshold`, `max_children`. |
+| **A2** | ✅ Complete | Wire `Parser::detect_format` in `run_log_mode`: sample first 1000 non-empty lines, set format hint | §5.1 | **M** | Until A3–A6 exist, detection can return `Raw` after scaffolding; must not panic. |
+| **A3** | ⏳ Pending | Replace `FormatHint::detect` `todo!` with heuristic scoring (JSON line ratio, `=`, syslog PRI, CLF patterns) | §5.1 | **M** | Lock format after sample; per-line fallback to raw as spec states. |
+| **A4** | ⏳ Pending | Minimal `Compressor::compress`: map `ScoredTemplate` → `CompressedEntry` (pattern string, count, promotion, empty slots) | §9.1 (minimal) | **S** | No slot statistics yet; enough for formatter to print. |
+| **A5** | ⏳ Pending | Implement `Formatter::render_text` for log mode per §10.2 (header, sections NEW/ANOMALY/NORMAL, truncation line) | §10.2 | **M** | Match structure in spec example; include run stats line when `verbose`. |
+| **A6** | ⏳ Pending | Wire post-run: `extract_run_counts` → `Scorer::flush_to_cms` → `StateStore::save_cms` + `save_meta` (extend meta to match §14 schema if needed) | §8, §14 | **M** | Use wall-clock `now` for decay; skip if `--no-state`. |
+| **A7** | ⏳ Pending | End-to-end integration test: small fixture log → non-empty text output, no panic | §16 | **S** | Golden file optional in A7; can be follow-up. |
 
-**Dependency note:** A1 is the critical path. A4–A5 can be stubbed in parallel once templates list is non-empty.
+**Dependency note:** A1 is complete. A4–A5 can now be stubbed in parallel once templates list is non-empty.
 
 ---
 
@@ -186,20 +186,134 @@ This roadmap closes those gaps in an order that keeps the main pipeline working 
 
 ---
 
-## Suggested weekend sequencing (example)
+## Implementation timeline (all tickets)
 
-Rough order for the next **12 weekends** assuming ~2.5 h each — adjust for **A1** complexity:
+**Assumptions:** ~2–3 hours per weekend session; **S** ≈ 1 weekend of focused work, **M** ≈ 2 weekends, **L** ≈ 3+ weekends (split across consecutive slots). Tickets on the same bullet may be done in parallel if you have extra time. **Seq** is the recommended global order when a single thread of work; respect **Depends on** before starting a ticket.
 
-1. **A1** (Drain) — weekends 1–3  
-2. **A4** + **A5** — weekend 4  
-3. **A6** + **A7** — weekend 5  
-4. **A2** + **A3** + **B6** — weekend 6  
-5. **B1** or **B2** — weekends 7–8  
-6. **C1** + **C2** — weekend 9  
-7. **D1** + **D3** — weekend 10  
-8. **G1** spike + design notes — starts JSON epic (then G3–G8 over many weekends)
+### Phase 0 — Delivered (M1 foundation)
 
-Parallel track: **I1**–**I3** can start once **A7** passes.
+| Seq | Ticket | Size | Notes |
+|-----|--------|------|--------|
+| 0a | **A1** | L | Drain insert — done. |
+| 0b | **A2** | M | `detect_format` wired; stub `Raw` ok until **A3**. — done. |
+
+### Phase 1 — Finish vertical slice (M1)
+
+| Seq | Ticket | Size | Depends on | Notes |
+|-----|--------|------|------------|--------|
+| 1 | **A4** | S | A1 | Minimal `Compressor::compress`; unblocks formatter input. |
+| 2 | **A5** | M | A4 | `render_text` for log mode. |
+| 3 | **A6** | M | A5 | Post-run CMS + `meta` flush; use wall-clock decay. |
+| 4 | **A7** | S | A6 | First end-to-end integration test (fixture → text, no panic). |
+| 5 | **E6** | S | — | CLI `--decay` vs `--cms-half-life` parity; reduces spec drift while state work is fresh. |
+
+### Phase 2 — Parser tier (M2)
+
+| Seq | Ticket | Size | Depends on | Notes |
+|-----|--------|------|------------|--------|
+| 6 | **A3** | M | A2 | Real `FormatHint::detect` heuristics; lock after sample. |
+| 7 | **B6** | S | A3 | `RunStats` / verbose for fallthrough; validates detection quality. |
+| 8 | **B5** | M | A7 | Multiline folding in line iteration; enables realistic fixtures. |
+| 9 | **B1** | M | B5 | NDJSON / `simd-json` path. |
+| 10 | **B2** | M | B5 | Logfmt scanner. |
+| 11 | **B3** | M | B1, B2 | CLF + RFC5424 structured parsers. |
+| 12 | **B4** | M | B3 | Heuristic timestamp / severity tier. |
+
+### Phase 3 — Clusterer production (M3)
+
+| Seq | Ticket | Size | Depends on | Notes |
+|-----|--------|------|------------|--------|
+| 13 | **C1** | M | A7 | `merge_pass` §18.2. |
+| 14 | **C2** | S | C1 | `--min-cluster-size` / rare lines. |
+| 15 | **C5** | S | C1 | Template examples (≤3 reps). |
+| 16 | **C4** | S | C2 | `RecordSource::JsonField` for JSON path story. |
+
+### Phase 4 — Compressor & formatter depth (M4, log path)
+
+| Seq | Ticket | Size | Depends on | Notes |
+|-----|--------|------|------------|--------|
+| 17 | **D1** | M | C1 | Slot statistics from wildcards. |
+| 18 | **D2** | M | D1 | Semantic deltas §9.2. |
+| 19 | **D3** | M | A5 | `--tokens` budget §10.3. |
+| 20 | **D4** | M | D3 | `render_ndjson`. |
+| 21 | **D6** | S | D4 | `render_raw` debug. |
+| 22 | **D8** | S | D4 | Multi-path rendering §18.11. |
+| 23 | **D5** | M | D4 | `render_human` + progress UI. |
+
+### Phase 5 — State & dictionary (M5)
+
+| Seq | Ticket | Size | Depends on | Notes |
+|-----|--------|------|------------|--------|
+| 24 | **E1** | M | A6 | `meta.json` ↔ §14. |
+| 25 | **E3** | M | E1 | Train Zstd dict from samples. |
+| 26 | **E4** | S | E3 | Use dict where spec applies. |
+| 27 | **E5** | M | E4 | Retrain triggers. |
+| 28 | **E2** | M | E1 | `templates.bin` (or explicit defer + doc). |
+
+### Phase 6 — JSON document core (M7)
+
+| Seq | Ticket | Size | Depends on | Notes |
+|-----|--------|------|------------|--------|
+| 29 | **G1** | L | A7 | Tape-mode spike; largest schedule risk. |
+| 30 | **G2** | M | G1 | 32 MB overlapping windows. |
+| 31 | **G3** | M | G2 | `SchemaTree` during walk. |
+| 32 | **G4** | M | G3 | HLL++ cardinality. |
+| 33 | **G5** | M | G3 | t-digest numeric stats. |
+| 34 | **G6** | M | G3 | Array summarisation §6.5. |
+| 35 | **G7** | M | G6 | Reservoir sampling §18.6. |
+| 36 | **G8** | M | G3 | Text classifier → `OwnedLogRecord`. |
+| 37 | **G9** | M | G8, B1 | Shared `Parser` on extracted strings + JSON path metadata. |
+| 38 | **G10** | M | G9 | Multiline JSON strings + fold. |
+| 39 | **G11** | M | G3 | Polymorphic keys §18.7. |
+| 40 | **G12** | S | G3 | `--schema-only`. |
+| 41 | **D7** | M | G9, G11 | JSON document text layout §6.7 (after extraction path exists). |
+
+### Phase 7 — JSON advanced (M8)
+
+| Seq | Ticket | Size | Depends on | Notes |
+|-----|--------|------|------------|--------|
+| 42 | **H2** | M | G9 | Path expression parser (prerequisite for **H1**/**H3**). |
+| 43 | **H1** | M | H2 | `--json-path` subtree focus. |
+| 44 | **H4** | S | H1 | Depth truncation messaging. |
+| 45 | **H3** | M | H2 | `[*]` second-pass leaf scan. |
+| 46 | **H6** | M | G8 | SIMD entropy §18.10. |
+| 47 | **H7** | S | H6 | Wire `--entropy-threshold` fully. |
+| 48 | **H5** | L | G3, G7 | Schema scavenger §18.9; do after core trie is stable. |
+
+### Phase 8 — Ingestion scale (M6)
+
+| Seq | Ticket | Size | Depends on | Notes |
+|-----|--------|------|------------|--------|
+| 49 | **F1** | L | C1 | Chunked ingestion; avoid full-buffer `into_bytes()` for huge files. |
+| 50 | **F2** | M | F1 | Bounded channels / back-pressure §3. |
+| 51 | **F3** | M | F1 | `--memory-limit` / RSS guard §15. |
+| 52 | **F4** | M | F2 | Time to first output byte §12. |
+
+### Phase 9 — Parallelism after correctness (M3/M6)
+
+| Seq | Ticket | Size | Depends on | Notes |
+|-----|--------|------|------------|--------|
+| 53 | **C3** | L | I3, C1 | Rayon parse + drain; only after single-threaded output matches goldens. |
+
+### Phase 10 — Quality, release, CI (M9)
+
+| Seq | Ticket | Size | Depends on | Notes |
+|-----|--------|------|------------|--------|
+| 54 | **I1** | S | A7 | Unit tests: scorer, CMS decay, surprise. |
+| 55 | **I2** | M | I1 | `proptest` CMS / parser invariants. |
+| 56 | **I3** | M | A7 | Golden integration tests. |
+| 57 | **I4** | M | B1, C1 | `cargo-fuzz` parser + Drain. |
+| 58 | **I5** | M | C3 | Criterion benches per stage. |
+| 59 | **I6** | M | F1 | CI large-log job (full size or proxy path). |
+| 60 | **I7** | S | — | `cargo audit`; `unsafe` review notes. |
+| 61 | **I8** | S | — | Windows / SIMD platform notes §18.5. |
+| 62 | **I9** | S | A5 | SIGPIPE / piped output behaviour §15. |
+
+**Parallel quality track:** **I1** can start as soon as **A7** lands; **I2**–**I3** follow **I1**. **I4** is best after parser + Drain are stable. **I5**–**I6** assume pipeline and ingestion paths exist. The table assigns **I*** after **C3**/ingestion in sequence, but in calendar time you should overlap **I1**–**I3** with Phases 2–5 wherever possible.
+
+### Approximate calendar span
+
+Summing phase roughness: Phases 1–5 ≈ **6–9 months** of weekends at ~2.5 h/week; Phases 6–8 (JSON + scale) ≈ **9–15 months** additional; Phase 9–10 overlap partially. **Total to full backlog:** on the order of **18–30 months** of solo weekend cadence — treat as a long arc, not a deadline.
 
 ---
 

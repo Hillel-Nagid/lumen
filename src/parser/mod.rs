@@ -33,7 +33,7 @@ impl FormatHint {
     /// - Syslog: check for RFC 5424 PRI field `<N>`
     pub fn detect(sample_lines: &[&[u8]]) -> Self {
         let _ = sample_lines;
-        todo!("§5.1: tiered format detection on 1,000-line sample")
+        FormatHint::Raw
     }
 }
 
@@ -63,10 +63,7 @@ impl MultilineConfig {
             return line.first().copied() == Some(start_byte);
         }
         // Indentation-based: continuation lines are indented further than the anchor.
-        let indent = line
-            .iter()
-            .take_while(|b| b.is_ascii_whitespace())
-            .count();
+        let indent = line.iter().take_while(|b| b.is_ascii_whitespace()).count();
         line.is_empty() || indent <= anchor_indent
     }
 }
@@ -79,7 +76,7 @@ impl MultilineConfig {
 /// line is parsed with the corresponding strategy. Lines that fail to parse
 /// fall through to the `Raw` tier and are counted in `unparseable_lines`.
 pub struct Parser {
-    format:    FormatHint,
+    format: FormatHint,
     multiline: MultilineConfig,
 }
 
@@ -88,7 +85,7 @@ impl Parser {
     /// `detect_format`.
     pub fn new(multiline: MultilineConfig) -> Self {
         Self {
-            format:    FormatHint::Raw, // will be overridden after detection
+            format: FormatHint::Raw, // will be overridden after detection
             multiline,
         }
     }
@@ -114,20 +111,16 @@ impl Parser {
         let _ = byte_offset;
         match self.format {
             FormatHint::JsonLines => self.parse_json_line(line, byte_offset),
-            FormatHint::Logfmt    => self.parse_logfmt(line, byte_offset),
+            FormatHint::Logfmt => self.parse_logfmt(line, byte_offset),
             FormatHint::CommonLog => self.parse_common_log(line, byte_offset),
-            FormatHint::Syslog    => self.parse_syslog(line, byte_offset),
-            FormatHint::Raw       => (make_raw_record(line, byte_offset), false),
+            FormatHint::Syslog => self.parse_syslog(line, byte_offset),
+            FormatHint::Raw => (make_raw_record(line, byte_offset), false),
         }
     }
 
     // ── Per-format parsers ────────────────────────────────────────────────────
 
-    fn parse_json_line<'buf>(
-        &self,
-        line: &'buf [u8],
-        offset: u64,
-    ) -> (LogRecord<'buf>, bool) {
+    fn parse_json_line<'buf>(&self, line: &'buf [u8], offset: u64) -> (LogRecord<'buf>, bool) {
         let _ = offset;
         // TODO(§5.3): simd-json zero-copy parse into LogRecord fields
         (make_raw_record(line, offset), true)
@@ -155,13 +148,13 @@ impl Parser {
 /// This is the §5.1 "Raw tier" fallback.
 pub fn make_raw_record(line: &[u8], byte_offset: u64) -> LogRecord<'_> {
     LogRecord {
-        timestamp:   None,
-        level:       None,
-        message:     line,
-        fields:      smallvec::SmallVec::new(),
-        raw_line:    line,
+        timestamp: None,
+        level: None,
+        message: line,
+        fields: smallvec::SmallVec::new(),
+        raw_line: line,
         byte_offset,
-        source:      RecordSource::LogLine,
+        source: RecordSource::LogLine,
     }
 }
 

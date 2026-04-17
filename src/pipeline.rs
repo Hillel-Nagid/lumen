@@ -54,11 +54,7 @@ pub fn run(args: Args) -> Result<()> {
 /// TODO(§4.2, §7.2): Wire up rayon parallel workers that each read a chunk,
 /// parse lines, and feed into `ShardedDrain`. Currently the stub drives the
 /// pipeline single-threaded for correctness verification.
-pub fn run_log_mode(
-    args: Args,
-    source: ingest::IngestSource,
-    mode: InputMode,
-) -> Result<()> {
+pub fn run_log_mode(args: Args, source: ingest::IngestSource, mode: InputMode) -> Result<()> {
     let t0 = Instant::now();
 
     // ── Load state ────────────────────────────────────────────────────────────
@@ -80,10 +76,14 @@ pub fn run_log_mode(
     // ── Detect format and parse lines ─────────────────────────────────────────
     // TODO(§4.2): replace with rayon parallel chunk processing.
     // TODO(§5.1): sample first 1,000 lines for format detection.
-    let parser = Parser::new(multiline);
+    let mut parser = Parser::new(multiline);
+    // Collect first 1000 lines (as &[u8]) for format detection
+    let sample_lines = ingest::LineIter::new(&data).take_non_empty(1000);
+    parser.detect_format(&sample_lines);
     let mut byte_offset: u64 = 0;
 
-    let (record_tx, record_rx) = crossbeam_channel::bounded::<crate::parser::types::OwnedLogRecord>(8192);
+    let (record_tx, record_rx) =
+        crossbeam_channel::bounded::<crate::parser::types::OwnedLogRecord>(8192);
 
     // Parse thread stub — in the final implementation this runs in a rayon pool.
     // For the boilerplate we iterate synchronously to keep the borrow checker happy.
@@ -115,7 +115,11 @@ pub fn run_log_mode(
 
     // ── Format ────────────────────────────────────────────────────────────────
     stats.elapsed_ms = t0.elapsed().as_millis() as u64;
-    let formatter_input = FormatterInput { entries, json_summary: None, stats };
+    let formatter_input = FormatterInput {
+        entries,
+        json_summary: None,
+        stats,
+    };
 
     let mut sink = open_sink(&args)?;
     formatter.render(formatter_input, &mut sink)?;
@@ -154,7 +158,8 @@ pub fn run_json_mode(args: Args, source: ingest::IngestSource) -> Result<()> {
         .unwrap_or("<stdin>")
         .to_string();
 
-    let (record_tx, record_rx) = crossbeam_channel::bounded::<crate::parser::types::OwnedLogRecord>(8192);
+    let (record_tx, record_rx) =
+        crossbeam_channel::bounded::<crate::parser::types::OwnedLogRecord>(8192);
 
     let analyzer = JsonDocAnalyzer::from_args(&args);
     // Run the analyzer — emits OwnedLogRecords through record_tx.
@@ -173,7 +178,7 @@ pub fn run_json_mode(args: Args, source: ingest::IngestSource) -> Result<()> {
 
     let mut stats = RunStats::default();
     stats.total_bytes = data.len() as u64;
-    stats.elapsed_ms  = t0.elapsed().as_millis() as u64;
+    stats.elapsed_ms = t0.elapsed().as_millis() as u64;
 
     let formatter_input = FormatterInput {
         entries,
@@ -218,11 +223,15 @@ fn load_state(args: &Args) -> Result<(CountMinSketch, Option<Vec<u8>>)> {
     }
     let slug = match effective_project_slug(args) {
         Some(s) => s,
-        None    => return Ok((CountMinSketch::new(), None)),
+        None => return Ok((CountMinSketch::new(), None)),
     };
     let store = StateStore::open(&slug)?;
-    let cms  = store.load_cms()?.unwrap_or_default();
-    let dict = if args.retrain_dict { None } else { store.load_dict()? };
+    let cms = store.load_cms()?.unwrap_or_default();
+    let dict = if args.retrain_dict {
+        None
+    } else {
+        store.load_dict()?
+    };
     Ok((cms, dict))
 }
 

@@ -3,7 +3,7 @@ use smol_str::SmolStr;
 
 use crate::parser::types::OwnedLogRecord;
 
-use super::template::{compute_template_id, LogTemplate, TemplateId, Token};
+use super::template::{compute_template_id, LogTemplate, Token};
 
 // ── Drain prefix-tree node ────────────────────────────────────────────────────
 
@@ -20,21 +20,21 @@ pub(crate) enum DrainNode {
         wildcard_child: Option<Box<DrainNode>>,
     },
     /// Leaf: a set of `LogTemplate`s with the same first-token and word count.
-    Leaf {
-        clusters: Vec<LogTemplate>,
-    },
+    Leaf { clusters: Vec<LogTemplate> },
 }
 
 impl DrainNode {
     pub fn new_interior() -> Self {
         Self::Interior {
-            children:       AHashMap::new(),
+            children: AHashMap::new(),
             wildcard_child: None,
         }
     }
 
     pub fn new_leaf() -> Self {
-        Self::Leaf { clusters: Vec::new() }
+        Self::Leaf {
+            clusters: Vec::new(),
+        }
     }
 }
 
@@ -55,9 +55,6 @@ pub struct DrainShard {
     /// The root of the prefix tree, keyed by word count.
     /// Using word count as the first discriminator matches the Drain paper.
     root: AHashMap<usize, DrainNode>,
-    /// All templates created in this shard, indexed by `TemplateId`.
-    /// Populated after the tree traversal returns a cluster.
-    pub templates: AHashMap<TemplateId, LogTemplate>,
 }
 
 impl DrainShard {
@@ -66,8 +63,7 @@ impl DrainShard {
             depth,
             max_children,
             sim_threshold,
-            root:      AHashMap::new(),
-            templates: AHashMap::new(),
+            root: AHashMap::new(),
         }
     }
 
@@ -80,15 +76,108 @@ impl DrainShard {
     /// 4. At the leaf, find the cluster with highest Jaccard similarity ≥ `sim_threshold`.
     /// 5. If found: update the template (wildcard new variable positions, update count).
     /// 6. If not found: create a new template with all tokens as Literals.
-    /// 7. If the leaf exceeds `max_children`: merge all into a wildcard cluster.
+    /// 7. If an interior node exceeds `max_children`, descend into its wildcard child.
     pub fn insert(&mut self, record: &OwnedLogRecord) {
-        let _ = record;
-        todo!("§7.1: Drain prefix-tree insert")
+        let tokens = tokenise(&*record.message);
+        let word_count = tokens.len();
+        let mut node = self
+            .root
+            .entry(word_count)
+            .or_insert_with(DrainNode::new_interior);
+        for token in tokens.iter().take(self.depth) {
+            node = match node {
+                DrainNode::Interior {
+                    children,
+                    wildcard_child,
+                } => {
+                    if children.contains_key(token) {
+                        children.get_mut(token).expect("child must exist").as_mut()
+                    } else if children.len() < self.max_children {
+                        children
+                            .entry(token.clone())
+                            .or_insert_with(|| Box::new(DrainNode::new_interior()))
+                            .as_mut()
+                    } else {
+                        wildcard_child
+                            .get_or_insert_with(|| Box::new(DrainNode::new_interior()))
+                            .as_mut()
+                    }
+                }
+                DrainNode::Leaf { .. } => {
+                    break;
+                }
+            };
+        }
+        if !matches!(node, DrainNode::Leaf { .. }) {
+            *node = DrainNode::new_leaf();
+        }
+
+        let template_tokens: Vec<Token> =
+            tokens.iter().map(|t| Token::Literal(t.clone())).collect();
+        let template_id = compute_template_id(&template_tokens);
+        if let DrainNode::Leaf { clusters } = node {
+            let mut best_cluster_id: Option<usize> = None;
+            let mut best_score: f64 = f64::NEG_INFINITY;
+            let mut best_wildcard_count: usize = usize::MAX;
+            for (idx, template) in clusters.iter().enumerate() {
+                let score = jaccard_similarity(&template.tokens, &tokens);
+                let wildcard_count = template.wildcard_count();
+                if score > best_score
+                    || (score == best_score && wildcard_count < best_wildcard_count)
+                {
+                    best_cluster_id = Some(idx);
+                    best_score = score;
+                    best_wildcard_count = wildcard_count;
+                }
+            }
+            if let Some(best_cluster_id) =
+                best_cluster_id.filter(|_| best_score >= self.sim_threshold)
+            {
+                let best_cluster = &mut clusters[best_cluster_id];
+                best_cluster.record_match(record.timestamp);
+                best_cluster.add_source_path(record.source_path());
+                let (updated_tokens, changed) =
+                    update_template_tokens(&best_cluster.tokens, &tokens);
+                if changed {
+                    best_cluster.tokens = updated_tokens;
+                    best_cluster.id = compute_template_id(&best_cluster.tokens);
+                }
+                if let Some(timestamp) = record.timestamp {
+                    best_cluster.last_seen = timestamp;
+                }
+                if best_cluster.examples.len() < 3 {
+                    best_cluster.examples.push(record.clone());
+                }
+            } else {
+                clusters.push(LogTemplate::new(template_id, template_tokens, record));
+            }
+        }
     }
 
     /// Drain all templates from this shard for the merge pass (§7.2, §18.2).
     pub fn take_templates(&mut self) -> Vec<LogTemplate> {
-        self.templates.drain().map(|(_, t)| t).collect()
+        let mut templates = Vec::new();
+        for (_, node) in self.root.drain() {
+            Self::drain_templates_from_node(node, &mut templates);
+        }
+        templates
+    }
+
+    fn drain_templates_from_node(node: DrainNode, out: &mut Vec<LogTemplate>) {
+        match node {
+            DrainNode::Interior {
+                children,
+                wildcard_child,
+            } => {
+                for (_, child) in children {
+                    Self::drain_templates_from_node(*child, out);
+                }
+                if let Some(wildcard_child) = wildcard_child {
+                    Self::drain_templates_from_node(*wildcard_child, out);
+                }
+            }
+            DrainNode::Leaf { clusters } => out.extend(clusters),
+        }
     }
 }
 
@@ -122,11 +211,11 @@ pub(crate) fn jaccard_similarity(template_tokens: &[Token], line_tokens: &[SmolS
         .iter()
         .zip(line_tokens.iter())
         .filter(|(t, w)| match t {
-            Token::Wildcard       => true,
-            Token::Literal(lit)   => lit.as_str() == w.as_str(),
+            Token::Wildcard => true,
+            Token::Literal(lit) => lit.as_str() == w.as_str(),
         })
         .count();
-    matches as f64 / template_tokens.len() as f64
+    (matches as f64) / (template_tokens.len() as f64)
 }
 
 /// Build a token sequence from a raw tokenised line, treating `candidate_tokens`

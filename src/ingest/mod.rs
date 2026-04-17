@@ -1,7 +1,7 @@
 pub mod detect;
 
 use std::fs::File;
-use std::io::{ self, BufReader, Read };
+use std::io::{self, BufReader, Read};
 use std::path::Path;
 
 use anyhow::Context;
@@ -9,7 +9,7 @@ use memmap2::Mmap;
 
 use crate::error::Result;
 
-pub use detect::{ InputMode, PROBE_LEN };
+pub use detect::{InputMode, PROBE_LEN};
 
 // ── File-size threshold for mmap vs. streaming ────────────────────────────────
 
@@ -94,6 +94,24 @@ impl<'a> LineIter<'a> {
     pub fn new(data: &'a [u8]) -> Self {
         Self { data, pos: 0 }
     }
+    pub fn take_non_empty(&mut self, n: usize) -> Vec<&'a [u8]> {
+        let mut lines = Vec::new();
+        let mut count = 0;
+        while count < n {
+            let line = self.next();
+            match line {
+                Some(line) => {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    lines.push(line);
+                }
+                None => break,
+            }
+            count += 1;
+        }
+        lines
+    }
 }
 
 impl<'a> Iterator for LineIter<'a> {
@@ -105,8 +123,7 @@ impl<'a> Iterator for LineIter<'a> {
         }
         let remaining = &self.data[self.pos..];
         // §4.2: use memchr for SIMD-accelerated newline scan.
-        let end = memchr
-            ::memchr(b'\n', remaining)
+        let end = memchr::memchr(b'\n', remaining)
             .map(|i| i + 1)
             .unwrap_or(remaining.len());
         let line = &remaining[..end];
@@ -184,13 +201,13 @@ fn open_file(path: &Path) -> Result<IngestSource> {
 }
 
 fn open_stdin() -> Result<IngestSource> {
-    let mut reader: BufReader<Box<dyn Read + Send>> = BufReader::with_capacity(
-        4 * 1024 * 1024,
-        Box::new(io::stdin())
-    );
+    let mut reader: BufReader<Box<dyn Read + Send>> =
+        BufReader::with_capacity(4 * 1024 * 1024, Box::new(io::stdin()));
     // Read first PROBE_LEN bytes for mode detection.
     let mut peek_buf = vec![0u8; PROBE_LEN];
-    let n = reader.read(&mut peek_buf).context("reading stdin for probe")?;
+    let n = reader
+        .read(&mut peek_buf)
+        .context("reading stdin for probe")?;
     peek_buf.truncate(n);
     Ok(IngestSource {
         inner: IngestInner::Buffered(reader),
@@ -203,37 +220,40 @@ fn open_stdin() -> Result<IngestSource> {
 fn open_gz(file: File, _size: u64) -> Result<IngestSource> {
     use flate2::read::GzDecoder;
     let decoder = GzDecoder::new(file);
-    let mut reader: BufReader<Box<dyn Read + Send>> = BufReader::with_capacity(
-        4 * 1024 * 1024,
-        Box::new(decoder)
-    );
+    let mut reader: BufReader<Box<dyn Read + Send>> =
+        BufReader::with_capacity(4 * 1024 * 1024, Box::new(decoder));
     let mut buf = Vec::new();
     reader.read_to_end(&mut buf).context("decompressing .gz")?;
     let peek_buf = buf[..buf.len().min(PROBE_LEN)].to_vec();
-    Ok(IngestSource { inner: IngestInner::SmallFile(buf), peek_buf })
+    Ok(IngestSource {
+        inner: IngestInner::SmallFile(buf),
+        peek_buf,
+    })
 }
 
 fn open_zst(file: File, _size: u64) -> Result<IngestSource> {
     let decoder = zstd::Decoder::new(file).context("creating zstd decoder")?;
-    let mut reader: BufReader<Box<dyn Read + Send>> = BufReader::with_capacity(
-        4 * 1024 * 1024,
-        Box::new(decoder)
-    );
+    let mut reader: BufReader<Box<dyn Read + Send>> =
+        BufReader::with_capacity(4 * 1024 * 1024, Box::new(decoder));
     let mut buf = Vec::new();
     reader.read_to_end(&mut buf).context("decompressing .zst")?;
     let peek_buf = buf[..buf.len().min(PROBE_LEN)].to_vec();
-    Ok(IngestSource { inner: IngestInner::SmallFile(buf), peek_buf })
+    Ok(IngestSource {
+        inner: IngestInner::SmallFile(buf),
+        peek_buf,
+    })
 }
 
 fn open_bz2(file: File, _size: u64) -> Result<IngestSource> {
     use bzip2::read::BzDecoder;
     let decoder = BzDecoder::new(file);
-    let mut reader: BufReader<Box<dyn Read + Send>> = BufReader::with_capacity(
-        4 * 1024 * 1024,
-        Box::new(decoder)
-    );
+    let mut reader: BufReader<Box<dyn Read + Send>> =
+        BufReader::with_capacity(4 * 1024 * 1024, Box::new(decoder));
     let mut buf = Vec::new();
     reader.read_to_end(&mut buf).context("decompressing .bz2")?;
     let peek_buf = buf[..buf.len().min(PROBE_LEN)].to_vec();
-    Ok(IngestSource { inner: IngestInner::SmallFile(buf), peek_buf })
+    Ok(IngestSource {
+        inner: IngestInner::SmallFile(buf),
+        peek_buf,
+    })
 }
