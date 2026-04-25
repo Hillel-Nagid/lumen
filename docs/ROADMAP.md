@@ -67,7 +67,7 @@ This roadmap closes those gaps in an order that keeps the main pipeline working 
 | **A4** | ✅ Complete | Minimal `Compressor::compress`: map `ScoredTemplate` → `CompressedEntry` (pattern string, count, promotion, empty slots) | §9.1 (minimal) | **S** | No slot statistics yet; enough for formatter to print. |
 | **A5** | ✅ Complete | Implement `Formatter::render_text` for log mode per §10.2 (header, sections NEW/ANOMALY/NORMAL, truncation line) | §10.2 | **M** | Match structure in spec example; include run stats line when `verbose`. |
 | **A6** | ✅ Complete | Wire post-run: `extract_run_counts` → `Scorer::flush_to_cms` → `StateStore::save_cms` + `save_meta` (extend meta to match §14 schema if needed) | §8, §14 | **M** | Use wall-clock `now` for decay; skip if `--no-state`. |
-| **A7** | ⏳ Pending | End-to-end integration test: small fixture log → non-empty text output, no panic | §16 | **S** | Golden file optional in A7; can be follow-up. |
+| **A7** | ✅ Complete | End-to-end integration test: small fixture log → non-empty text output, no panic | §16 | **S** | Golden file optional in A7; can be follow-up. |
 
 **Dependency note:** A1 is complete. A4–A5 can now be stubbed in parallel once templates list is non-empty.
 
@@ -75,114 +75,114 @@ This roadmap closes those gaps in an order that keeps the main pipeline working 
 
 ### Theme B — Parser depth (M2)
 
-| ID | Title | Spec | Size |
-|----|--------|------|------|
-| **B1** | NDJSON path: `simd-json` parse per line into `LogRecord` (timestamp/level/message/fields) with borrow from line buffer | §5.3 | **M** |
-| **B2** | Logfmt / key=value SIMD-friendly scanner for `=` and delimiters | §5.3 | **M** |
-| **B3** | Common Log Format + RFC5424 syslog parsers (structured tier) | §5.1 | **M** |
-| **B4** | Heuristic tier: timestamp regex/state machine, severity keywords (integrate with existing `Level::from_bytes`) | §5.1 | **M** |
-| **B5** | Multiline: implement `fold_multiline` and integrate `MultilineConfig` in line iteration (indent vs `--multiline-start`) | §18.1 | **M** |
-| **B6** | Track `RunStats.unparseable_lines` and `verbose` stats for fallthrough lines | §5.1, §15 | **S** |
+| ID | Status | Title | Spec | Size | Notes / acceptance |
+|----|--------|-------|------|------|---------------------|
+| **B1** | ⏳ Pending | NDJSON path: `simd-json` parse per line into `LogRecord` (timestamp/level/message/fields) with borrow from line buffer | §5.3 | **M** | Parse valid NDJSON without allocation-heavy DOM materialisation; fall back to raw on malformed lines without panicking. |
+| **B2** | ⏳ Pending | Logfmt / key=value SIMD-friendly scanner for `=` and delimiters | §5.3 | **M** | Extract message plus up to configured key/value fields; preserve raw line and tolerate quoted values / missing values conservatively. |
+| **B3** | ⏳ Pending | Common Log Format + RFC5424 syslog parsers (structured tier) | §5.1 | **M** | Recognise CLF and RFC5424 samples during format detection; populate timestamp/level/message where present and raw fallback otherwise. |
+| **B4** | ⏳ Pending | Heuristic tier: timestamp regex/state machine, severity keywords (integrate with existing `Level::from_bytes`) | §5.1 | **M** | Strip common timestamp/severity prefixes into structured fields; keep original raw line and avoid false positives on plain text. |
+| **B5** | ⏳ Pending | Multiline: implement `fold_multiline` and integrate `MultilineConfig` in line iteration (indent vs `--multiline-start`) | §18.1 | **M** | Stack traces / continuation lines become one record; explicit `--multiline-start` takes precedence over indentation heuristic. |
+| **B6** | ⏳ Pending | Track `RunStats.unparseable_lines` and `verbose` stats for fallthrough lines | §5.1, §15 | **S** | Increment counters consistently across parser fallbacks; verbose text output surfaces totals without changing quiet mode. |
 
 ---
 
 ### Theme C — Clusterer completion (M3)
 
-| ID | Title | Spec | Size |
-|----|--------|------|------|
-| **C1** | Implement `merge_pass`: group by token count, edit-distance-1 merge, combine counts, examples, CMS identity §18.2 | §18.2 | **M** |
-| **C2** | Honour `--min-cluster-size`: emit verbatim / separate handling for rare lines per §7.4 | §7.4 | **S** |
-| **C3** | Parallel ingestion: rayon workers parsing chunks + `ShardedDrain::insert` (bounded channel) | §7.2, §3 | **L** |
-| **C4** | Shard key + JSON path: ensure `RecordSource::JsonField` populated from JSON mode (prep for M7) | §7.2, §18.11 | **S** |
-| **C5** | `LogTemplate` examples: maintain up to 3 representatives; evict policy after cluster phase if spec requires | §7.3, §12 | **S** |
+| ID | Status | Title | Spec | Size | Notes / acceptance |
+|----|--------|-------|------|------|---------------------|
+| **C1** | ⏳ Pending | Implement `merge_pass`: group by token count, edit-distance-1 merge, combine counts, examples, CMS identity §18.2 | §18.2 | **M** | Converge templates that differ by one token into wildcard templates; preserve combined counts, timestamps, paths, and examples. |
+| **C2** | ⏳ Pending | Honour `--min-cluster-size`: emit verbatim / separate handling for rare lines per §7.4 | §7.4 | **S** | Rare templates below threshold are not folded into misleading clusters; output path remains deterministic for small fixtures. |
+| **C3** | ⏳ Pending | Parallel ingestion: rayon workers parsing chunks + `ShardedDrain::insert` (bounded channel) | §7.2, §3 | **L** | Parallel path matches single-threaded golden output; channel bounds memory and no shard contention hot spot dominates throughput. |
+| **C4** | ⏳ Pending | Shard key + JSON path: ensure `RecordSource::JsonField` populated from JSON mode (prep for M7) | §7.2, §18.11 | **S** | JSON-extracted records carry stable paths through parsing, clustering, compression, and formatter input. |
+| **C5** | ⏳ Pending | `LogTemplate` examples: maintain up to 3 representatives; evict policy after cluster phase if spec requires | §7.3, §12 | **S** | Each template retains at most three useful raw examples without unbounded memory growth. |
 
 ---
 
 ### Theme D — Compressor & formatter (M4)
 
-| ID | Title | Spec | Size |
-|----|--------|------|------|
-| **D1** | Slot statistics from wildcard positions: numeric min/max/p50/p99; string sets ≤20 else distinct count | §9.1 | **M** |
-| **D2** | Semantic deltas within same template (relative timestamps / field deltas) | §9.2 | **M** |
-| **D3** | `--tokens` enforcement: always emit Novelty+Anomaly; fill with Normal by count; truncation footer | §10.3 | **M** |
-| **D4** | `Formatter::render_ndjson`: serde schema for one object per template group | §10.1 | **M** |
-| **D5** | `Formatter::render_human`: ANSI + `indicatif` progress (spinner or bar during read) | §10.1 | **M** |
-| **D6** | `Formatter::render_raw`: one line per record with parsed fields (debug) | §10.1 | **S** |
-| **D7** | JSON document text output layout: `JsonDocSummary` header per §6.7 (structure block + cluster sections) | §6.7 | **M** |
-| **D8** | Multi-path template rendering §18.11 (`paths:` with per-path counts) | §18.11 | **S** |
+| ID | Status | Title | Spec | Size | Notes / acceptance |
+|----|--------|-------|------|------|---------------------|
+| **D1** | ⏳ Pending | Slot statistics from wildcard positions: numeric min/max/p50/p99; string sets ≤20 else distinct count | §9.1 | **M** | Populate `VariableSlot` for wildcard positions using observed examples/matches; distinguish numeric and string distributions. |
+| **D2** | ⏳ Pending | Semantic deltas within same template (relative timestamps / field deltas) | §9.2 | **M** | Repeated template runs show meaningful deltas instead of redundant examples; output remains compact and deterministic. |
+| **D3** | ⏳ Pending | `--tokens` enforcement: always emit Novelty+Anomaly; fill with Normal by count; truncation footer | §10.3 | **M** | Respect configured token budget approximately; never drop Novelty/Anomaly and report omitted entry counts. |
+| **D4** | ⏳ Pending | `Formatter::render_ndjson`: serde schema for one object per template group | §10.1 | **M** | Emit one valid JSON object per line with stable field names covering template, count, promotion, stats, paths, and examples. |
+| **D5** | ⏳ Pending | `Formatter::render_human`: ANSI + `indicatif` progress (spinner or bar during read) | §10.1 | **M** | Human mode adds colour/progress without corrupting text/JSON modes; disable/avoid noisy progress for non-interactive sinks. |
+| **D6** | ⏳ Pending | `Formatter::render_raw`: one line per record with parsed fields (debug) | §10.1 | **S** | Debug output exposes parser decisions line-by-line for fixtures; useful for validating parser stages. |
+| **D7** | ⏳ Pending | JSON document text output layout: `JsonDocSummary` header per §6.7 (structure block + cluster sections) | §6.7 | **M** | JSON mode output includes source header, schema summary, and extracted log pattern sections in the same text format. |
+| **D8** | ⏳ Pending | Multi-path template rendering §18.11 (`paths:` with per-path counts) | §18.11 | **S** | Templates shared across JSON paths show contributing paths and counts without duplicating the pattern body. |
 
 ---
 
 ### Theme E — State & Zstd (M5)
 
-| ID | Title | Spec | Size |
-|----|--------|------|------|
-| **E1** | Align `meta.json` with §14 (`schema_version`, `runs[]` with `run_id`, `template_count`, etc.) | §14 | **M** |
-| **E2** | `templates.bin` persistence (optional for MVP; spec lists it — define minimal binary or defer with doc) | §14 | **M** |
-| **E3** | Dictionary training: sample up to 100 MB raw text, `zstd::dict::from_samples`, `save_dict` | §9.3 | **M** |
-| **E4** | Use trained dict for compressing CMS output / intermediate buffers where spec applies | §9.3 | **S** |
-| **E5** | Retrain triggers: after 50 runs or cosine distance > 0.3 between CMS histograms (define histogram representation) | §9.3 | **M** |
-| **E6** | CLI parity pass: spec lists `--decay`; code uses `--cms-half-life` — add alias or document single source of truth | §11 vs §18.3 | **S** |
+| ID | Status | Title | Spec | Size | Notes / acceptance |
+|----|--------|-------|------|------|---------------------|
+| **E1** | ⏳ Pending | Align `meta.json` with §14 (`schema_version`, `runs[]` with `run_id`, `template_count`, etc.) | §14 | **M** | Replace simplified metadata with versioned schema; load older state safely or rebuild with clear warning. |
+| **E2** | ⏳ Pending | `templates.bin` persistence (optional for MVP; spec lists it — define minimal binary or defer with doc) | §14 | **M** | Either implement stable template persistence or explicitly defer it with rationale and compatibility notes. |
+| **E3** | ⏳ Pending | Dictionary training: sample up to 100 MB raw text, `zstd::dict::from_samples`, `save_dict` | §9.3 | **M** | Train from bounded raw samples and persist `dict.zst`; skip cleanly when input/state constraints prevent training. |
+| **E4** | ⏳ Pending | Use trained dict for compressing CMS output / intermediate buffers where spec applies | §9.3 | **S** | Existing dictionaries are loaded and applied only where beneficial; missing/corrupt dict falls back without failing runs. |
+| **E5** | ⏳ Pending | Retrain triggers: after 50 runs or cosine distance > 0.3 between CMS histograms (define histogram representation) | §9.3 | **M** | Retraining decision is deterministic, documented in metadata, and avoids excessive retrain churn. |
+| **E6** | ⏳ Pending | CLI parity pass: spec lists `--decay`; code uses `--cms-half-life` — add alias or document single source of truth | §11 vs §18.3 | **S** | CLI help and spec agree; old flag names remain user-friendly if aliases are added. |
 
 ---
 
 ### Theme F — Ingestion & memory (M6)
 
-| ID | Title | Spec | Size |
-|----|--------|------|------|
-| **F1** | Avoid full `into_bytes()` for multi-GB files: stream chunks with `chunk_size`, feed `LineIter` per chunk with offset tracking | §4.1 | **L** |
-| **F2** | Back-pressure: bounded channels between stages; document buffer sizes | §3 | **M** |
-| **F3** | `--memory-limit`: monitor RSS (platform-specific), reduce chunk size or skip dict training when near limit | §15 | **M** |
-| **F4** | Time to first output byte: structure pipeline so formatter can start after first batch (target §12) | §12 | **M** |
+| ID | Status | Title | Spec | Size | Notes / acceptance |
+|----|--------|-------|------|------|---------------------|
+| **F1** | ⏳ Pending | Avoid full `into_bytes()` for multi-GB files: stream chunks with `chunk_size`, feed `LineIter` per chunk with offset tracking | §4.1 | **L** | Large files are processed without full materialisation; record byte offsets remain correct across chunk boundaries. |
+| **F2** | ⏳ Pending | Back-pressure: bounded channels between stages; document buffer sizes | §3 | **M** | Pipeline stages use bounded queues with clear capacities; slow consumers do not cause unbounded memory growth. |
+| **F3** | ⏳ Pending | `--memory-limit`: monitor RSS (platform-specific), reduce chunk size or skip dict training when near limit | §15 | **M** | Memory guard acts before OOM; degraded modes are logged and output remains valid. |
+| **F4** | ⏳ Pending | Time to first output byte: structure pipeline so formatter can start after first batch (target §12) | §12 | **M** | Streaming architecture can emit useful partial output before the whole input is consumed where format allows. |
 
 ---
 
 ### Theme G — JSON document core (M7)
 
-| ID | Title | Spec | Size |
-|----|--------|------|------|
-| **G1** | sonic-rs tape-mode: stream document, emit tokens without materialising DOM | §6.2 | **L** |
-| **G2** | Large document windows: 32 MB overlapping windows with tape stitch | §6.2 | **M** |
-| **G3** | Build `SchemaTree` during tape walk: paths, type counts, nodes | §6.4 | **M** |
-| **G4** | Replace `CardinalitySketch` placeholder with HyperLogLog++ (14-bit); wire `insert`/`estimate` | §6.4 | **M** |
-| **G5** | Replace `NumericStats` placeholder with streaming t-digest for p50/p99 | §6.4 | **M** |
-| **G6** | Array summarisation: count, sample positions (first/middle/last up to `max_array_samples`), inline ≤ `max_array_inline` | §6.5 | **M** |
-| **G7** | Reservoir sampling (200) for internal schema stats when array larger than samples | §18.6 | **M** |
-| **G8** | Text classifier: wire `classify_string`; extract `UnstructuredLine` / `UnstructuredMultiline` to `OwnedLogRecord` | §6.3 | **M** |
-| **G9** | Parse extracted strings with shared `Parser`; attach `json_path`, `json_index`, sibling scalars | §6.3 | **M** |
-| **G10** | Multiline JSON strings: unescape, split on `\n`, fold with §18.1 heuristic | §6.3 | **M** |
-| **G11** | Polymorphic keys & type variance annotations (common / partial / delta footnote) | §18.7 | **M** |
-| **G12** | `--schema-only` behaviour | §6, §11 | **S** |
+| ID | Status | Title | Spec | Size | Notes / acceptance |
+|----|--------|-------|------|------|---------------------|
+| **G1** | ⏳ Pending | sonic-rs tape-mode: stream document, emit tokens without materialising DOM | §6.2 | **L** | JSON documents are walked as a stream/tape; large inputs avoid DOM-sized memory spikes. |
+| **G2** | ⏳ Pending | Large document windows: 32 MB overlapping windows with tape stitch | §6.2 | **M** | Window boundaries preserve valid token context; large fixtures produce the same summary as smaller in-memory paths. |
+| **G3** | ⏳ Pending | Build `SchemaTree` during tape walk: paths, type counts, nodes | §6.4 | **M** | Schema tree records paths, observed types, counts, and truncation flags while respecting max depth. |
+| **G4** | ⏳ Pending | Replace `CardinalitySketch` placeholder with HyperLogLog++ (14-bit); wire `insert`/`estimate` | §6.4 | **M** | Cardinality estimates are stable enough for schema summaries and covered by focused tests. |
+| **G5** | ⏳ Pending | Replace `NumericStats` placeholder with streaming t-digest for p50/p99 | §6.4 | **M** | Numeric summaries report min/max/p50/p99 without storing all values. |
+| **G6** | ⏳ Pending | Array summarisation: count, sample positions (first/middle/last up to `max_array_samples`), inline ≤ `max_array_inline` | §6.5 | **M** | Arrays show count and representative samples; small arrays can be inlined according to CLI limits. |
+| **G7** | ⏳ Pending | Reservoir sampling (200) for internal schema stats when array larger than samples | §18.6 | **M** | Large-array sampling remains bounded and representative enough for schema/type summaries. |
+| **G8** | ⏳ Pending | Text classifier: wire `classify_string`; extract `UnstructuredLine` / `UnstructuredMultiline` to `OwnedLogRecord` | §6.3 | **M** | Text-like JSON strings become records for the shared log pipeline; scalar/noise strings are filtered out. |
+| **G9** | ⏳ Pending | Parse extracted strings with shared `Parser`; attach `json_path`, `json_index`, sibling scalars | §6.3 | **M** | Extracted JSON text reuses parser logic and carries origin metadata through clustering. |
+| **G10** | ⏳ Pending | Multiline JSON strings: unescape, split on `\n`, fold with §18.1 heuristic | §6.3 | **M** | Multiline JSON log strings produce coherent records, not one noisy record per physical line. |
+| **G11** | ⏳ Pending | Polymorphic keys & type variance annotations (common / partial / delta footnote) | §18.7 | **M** | Schema output marks type/key variance clearly without overwhelming common-case structure. |
+| **G12** | ⏳ Pending | `--schema-only` behaviour | §6, §11 | **S** | Schema-only mode suppresses extracted log clusters/examples while still emitting valid schema summary. |
 
 ---
 
 ### Theme H — JSON advanced (M8)
 
-| ID | Title | Spec | Size |
-|----|--------|------|------|
-| **H1** | `--json-path` subtree focus: filter schema + extraction to rooted path | §6.6 | **M** |
-| **H2** | Path expression parser: `.key`, `[N]`, `[*]` | §18.8 | **M** |
-| **H3** | Second-pass leaf scan for `[*]` wildcard: full value distribution at leaf | §18.8 | **M** |
-| **H4** | Depth truncation message with key count hint | §6.6 | **S** |
-| **H5** | Schema trie scavenger at 90 MB / 100 MB ceiling; eviction policy §18.9 | §18.9 | **L** |
-| **H6** | SIMD entropy histogram (or `wide` / arch intrinsics) for §18.10 fast path | §18.10 | **M** |
-| **H7** | Configurable `--entropy-threshold` fully applied (already partially wired) | §18.10 | **S** |
+| ID | Status | Title | Spec | Size | Notes / acceptance |
+|----|--------|-------|------|------|---------------------|
+| **H1** | ⏳ Pending | `--json-path` subtree focus: filter schema + extraction to rooted path | §6.6 | **M** | Selected subtree limits both schema output and text extraction; invalid paths produce clear errors or empty summaries. |
+| **H2** | ⏳ Pending | Path expression parser: `.key`, `[N]`, `[*]` | §18.8 | **M** | Parser accepts documented path grammar, rejects ambiguous input, and has tests for nested arrays/objects. |
+| **H3** | ⏳ Pending | Second-pass leaf scan for `[*]` wildcard: full value distribution at leaf | §18.8 | **M** | Wildcard array focus reports leaf distributions across all matching elements without scanning unrelated branches. |
+| **H4** | ⏳ Pending | Depth truncation message with key count hint | §6.6 | **S** | Truncated schema nodes include a concise count/hint so users know output is intentionally bounded. |
+| **H5** | ⏳ Pending | Schema trie scavenger at 90 MB / 100 MB ceiling; eviction policy §18.9 | §18.9 | **L** | Memory ceiling triggers deterministic eviction/summarisation and preserves high-value/common schema paths. |
+| **H6** | ⏳ Pending | SIMD entropy histogram (or `wide` / arch intrinsics) for §18.10 fast path | §18.10 | **M** | Entropy classifier gets a measured speedup or documented fallback while preserving classification results. |
+| **H7** | ⏳ Pending | Configurable `--entropy-threshold` fully applied (already partially wired) | §18.10 | **S** | CLI threshold changes classification decisions consistently across JSON extraction paths. |
 
 ---
 
 ### Theme I — Hardening & release (M9)
 
-| ID | Title | Spec | Size |
-|----|--------|------|------|
-| **I1** | Unit tests: scorer formulas, CMS decay, surprise boundaries | §16 | **S** |
-| **I2** | Property tests: `proptest` for CMS monotonicity / parser invariants | §16 | **M** |
-| **I3** | Golden integration tests: fixtures → expected condensed output | §16 | **M** |
-| **I4** | `cargo-fuzz` targets for parser + Drain | §16 | **M** |
-| **I5** | Criterion benches per stage (`benches/pipeline.rs` extension) | §16 | **M** |
-| **I6** | CI: large synthetic log job on main (1 GB or scaled-down proxy with same code paths) | §16 | **M** |
-| **I7** | `cargo audit` in CI; document `unsafe` SAFETY review | §13 | **S** |
-| **I8** | Windows non-x86_64 compile-time warning; document Linux/macOS SIMD | §18.5 | **S** |
-| **I9** | SIGPIPE: verify flush-on-break for piped output (Unix); document Windows behaviour | §15 | **S** |
+| ID | Status | Title | Spec | Size | Notes / acceptance |
+|----|--------|-------|------|------|---------------------|
+| **I1** | ⏳ Pending | Unit tests: scorer formulas, CMS decay, surprise boundaries | §16 | **S** | Cover surprise thresholds, Novelty/Anomaly promotion, CMS estimate, and decay edge cases. |
+| **I2** | ⏳ Pending | Property tests: `proptest` for CMS monotonicity / parser invariants | §16 | **M** | Randomised tests assert CMS counters do not undercount inserted IDs and parser never panics on arbitrary bytes. |
+| **I3** | ⏳ Pending | Golden integration tests: fixtures → expected condensed output | §16 | **M** | Stable fixtures cover log modes and representative output sections; intentional output changes update goldens deliberately. |
+| **I4** | ⏳ Pending | `cargo-fuzz` targets for parser + Drain | §16 | **M** | Fuzz targets exercise parser/tokeniser/Drain insert paths with crashers minimised and checked in when useful. |
+| **I5** | ⏳ Pending | Criterion benches per stage (`benches/pipeline.rs` extension) | §16 | **M** | Benchmarks isolate ingest, parse, cluster, score, compress, and format stages with reproducible fixture sizes. |
+| **I6** | ⏳ Pending | CI: large synthetic log job on main (1 GB or scaled-down proxy with same code paths) | §16 | **M** | CI exercises the same large-input code path within practical runtime limits and catches regressions. |
+| **I7** | ⏳ Pending | `cargo audit` in CI; document `unsafe` SAFETY review | §13 | **S** | Security audit runs automatically; every `unsafe` block has an adjacent SAFETY rationale. |
+| **I8** | ⏳ Pending | Windows non-x86_64 compile-time warning; document Linux/macOS SIMD | §18.5 | **S** | Platform notes are explicit and unsupported SIMD assumptions fail loudly or fall back safely. |
+| **I9** | ⏳ Pending | SIGPIPE: verify flush-on-break for piped output (Unix); document Windows behaviour | §15 | **S** | Piped output terminates cleanly when downstream closes; Windows behaviour is documented and tested where feasible. |
 
 ---
 
