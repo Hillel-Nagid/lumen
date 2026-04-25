@@ -73,7 +73,10 @@ pub struct Compressor {
 
 impl Compressor {
     pub fn new(bytes_per_token: f64, token_budget: Option<u64>) -> Self {
-        Self { bytes_per_token, token_budget }
+        Self {
+            bytes_per_token,
+            token_budget,
+        }
     }
 
     /// Compress a ranked list of scored templates into condensed output entries.
@@ -87,8 +90,38 @@ impl Compressor {
     /// TODO(§9.2): implement semantic delta rendering for runs of the same template.
     /// TODO(§9.3): apply Zstd dictionary compression to intermediate buffers.
     pub fn compress(&self, scored: Vec<ScoredTemplate>) -> Vec<CompressedEntry> {
-        let _ = scored;
-        todo!("§9.1: compress scored templates into condensed entries")
+        let entries = scored
+            .into_iter()
+            .map(|st| {
+                let template = st.template.pattern();
+                let count = st.template.occurrence_count();
+                let source_paths = st
+                    .template
+                    .source_paths
+                    .into_iter()
+                    .map(|p| p.to_string())
+                    .collect();
+                let examples = st
+                    .template
+                    .examples
+                    .iter()
+                    .map(|e| String::from_utf8_lossy(&e.raw_line).into_owned())
+                    .collect();
+                CompressedEntry {
+                    template,
+                    count,
+                    promotion: st.promotion,
+                    surprise: st.surprise,
+                    historic_est: st.historic_estimate,
+                    slots: vec![],
+                    first_seen_us: st.template.first_seen,
+                    last_seen_us: st.template.last_seen,
+                    source_paths,
+                    examples,
+                }
+            })
+            .collect();
+        entries
     }
 
     /// Train a Zstd dictionary from a sample of raw log bytes (§9.3).

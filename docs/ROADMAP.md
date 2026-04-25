@@ -62,11 +62,11 @@ This roadmap closes those gaps in an order that keeps the main pipeline working 
 | ID | Status | Title | Spec | Size | Notes / acceptance |
 |----|--------|-------|------|------|---------------------|
 | **A1** | ✅ Complete | Implement `DrainShard::insert` (tokenise, prefix tree walk, Jaccard match, new cluster, `max_children` wildcarding) | §7.1–7.4 | **L** | Split across A1a/A1b if needed: (1) tokenise + tree navigation + new template; (2) similarity update + wildcard rules. Must respect `depth`, `sim_threshold`, `max_children`. |
-| **A2** | ✅ Complete | Wire `Parser::detect_format` in `run_log_mode`: sample first 1000 non-empty lines, set format hint | §5.1 | **M** | Until A3–A6 exist, detection can return `Raw` after scaffolding; must not panic. |
+| **A2** |✅ Complete | Wire `Parser::detect_format` in `run_log_mode`: sample first 1000 non-empty lines, set format hint | §5.1 | **M** | Until A3–A6 exist, detection can return `Raw` after scaffolding; must not panic. |
 | **A3** | ⏳ Pending | Replace `FormatHint::detect` `todo!` with heuristic scoring (JSON line ratio, `=`, syslog PRI, CLF patterns) | §5.1 | **M** | Lock format after sample; per-line fallback to raw as spec states. |
-| **A4** | ⏳ Pending | Minimal `Compressor::compress`: map `ScoredTemplate` → `CompressedEntry` (pattern string, count, promotion, empty slots) | §9.1 (minimal) | **S** | No slot statistics yet; enough for formatter to print. |
-| **A5** | ⏳ Pending | Implement `Formatter::render_text` for log mode per §10.2 (header, sections NEW/ANOMALY/NORMAL, truncation line) | §10.2 | **M** | Match structure in spec example; include run stats line when `verbose`. |
-| **A6** | ⏳ Pending | Wire post-run: `extract_run_counts` → `Scorer::flush_to_cms` → `StateStore::save_cms` + `save_meta` (extend meta to match §14 schema if needed) | §8, §14 | **M** | Use wall-clock `now` for decay; skip if `--no-state`. |
+| **A4** | ✅ Complete | Minimal `Compressor::compress`: map `ScoredTemplate` → `CompressedEntry` (pattern string, count, promotion, empty slots) | §9.1 (minimal) | **S** | No slot statistics yet; enough for formatter to print. |
+| **A5** | ✅ Complete | Implement `Formatter::render_text` for log mode per §10.2 (header, sections NEW/ANOMALY/NORMAL, truncation line) | §10.2 | **M** | Match structure in spec example; include run stats line when `verbose`. |
+| **A6** | ✅ Complete | Wire post-run: `extract_run_counts` → `Scorer::flush_to_cms` → `StateStore::save_cms` + `save_meta` (extend meta to match §14 schema if needed) | §8, §14 | **M** | Use wall-clock `now` for decay; skip if `--no-state`. |
 | **A7** | ⏳ Pending | End-to-end integration test: small fixture log → non-empty text output, no panic | §16 | **S** | Golden file optional in A7; can be follow-up. |
 
 **Dependency note:** A1 is complete. A4–A5 can now be stubbed in parallel once templates list is non-empty.

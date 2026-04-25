@@ -28,20 +28,25 @@ pub struct FormatterInput {
 /// - `Human` → `render_human`
 /// - `Raw`   → `render_raw`
 pub struct Formatter {
-    format:          OutputFormat,
+    format: OutputFormat,
     bytes_per_token: f64,
-    token_budget:    Option<u64>,
-    verbose:         bool,
+    token_budget: Option<u64>,
+    verbose: bool,
 }
 
 impl Formatter {
     pub fn new(
-        format:          OutputFormat,
+        format: OutputFormat,
         bytes_per_token: f64,
-        token_budget:    Option<u64>,
-        verbose:         bool,
+        token_budget: Option<u64>,
+        verbose: bool,
     ) -> Self {
-        Self { format, bytes_per_token, token_budget, verbose }
+        Self {
+            format,
+            bytes_per_token,
+            token_budget,
+            verbose,
+        }
     }
 
     /// Render `input` to `sink`.
@@ -53,10 +58,10 @@ impl Formatter {
         sink: &mut W,
     ) -> crate::error::Result<u64> {
         match self.format {
-            OutputFormat::Text  => self.render_text(input, sink),
-            OutputFormat::Json  => self.render_ndjson(input, sink),
+            OutputFormat::Text => self.render_text(input, sink),
+            OutputFormat::Json => self.render_ndjson(input, sink),
             OutputFormat::Human => self.render_human(input, sink),
-            OutputFormat::Raw   => self.render_raw(input, sink),
+            OutputFormat::Raw => self.render_raw(input, sink),
         }
     }
 
@@ -87,8 +92,34 @@ impl Formatter {
         input: FormatterInput,
         sink: &mut W,
     ) -> crate::error::Result<u64> {
-        let _ = (input, sink);
-        todo!("§10.2: plain-text renderer")
+        const MAX_NORMAL_ENTRIES: usize = 50;
+        let mut written = 0;
+        let mut new_entries = Vec::new();
+        let mut anomaly_entries = Vec::new();
+        let mut normal_entries = Vec::new();
+        input
+            .entries
+            .iter()
+            .for_each(|entry| match entry.promotion {
+                Promotion::Novelty => new_entries.push(entry),
+                Promotion::Anomaly => anomaly_entries.push(entry),
+                Promotion::Elevated | Promotion::Normal => normal_entries.push(entry),
+            });
+        let shown_normal = normal_entries.len().min(MAX_NORMAL_ENTRIES);
+        let omitted_normal = normal_entries.len().saturating_sub(shown_normal);
+        written += self.render_section(sink, "NEW", &new_entries)?;
+        written += self.render_section(sink, "ANOMALY", &anomaly_entries)?;
+        written += self.render_section(sink, "NORMAL", &normal_entries[..shown_normal])?;
+        if omitted_normal > 0 {
+            written += sink.write(
+                format!("{omitted_normal} normal patterns omitted for brevity\n").as_bytes(),
+            )?;
+        }
+        if self.verbose {
+            written += sink.write(format!("## Run Stats\n{}\n", input.stats,).as_bytes())?;
+        }
+        sink.flush()?;
+        Ok(written as u64)
     }
 
     // ── NDJSON renderer (§10.3) ───────────────────────────────────────────────
@@ -133,6 +164,27 @@ impl Formatter {
         let _ = (input, sink);
         todo!("§10: raw renderer")
     }
+
+    fn render_section<W: Write>(
+        &self,
+        sink: &mut W,
+        title: &str,
+        entries: &[&CompressedEntry],
+    ) -> crate::error::Result<usize> {
+        let mut written = sink.write(format!("## {}\n", title).as_bytes())?;
+        for entry in entries.iter() {
+            written += sink.write(
+                format!(
+                    "{} {} (count: {})\n",
+                    entry.promotion.tag(),
+                    entry.template,
+                    entry.count
+                )
+                .as_bytes(),
+            )?;
+        }
+        Ok(written)
+    }
 }
 
 // ── Promotion colouring (§10.4) ───────────────────────────────────────────────
@@ -140,10 +192,10 @@ impl Formatter {
 /// ANSI colour codes for promotion tiers in `--format=human` output.
 pub fn promotion_color(p: Promotion) -> &'static str {
     match p {
-        Promotion::Novelty  => "\x1b[1;35m", // bold magenta
-        Promotion::Anomaly  => "\x1b[1;31m", // bold red
+        Promotion::Novelty => "\x1b[1;35m",  // bold magenta
+        Promotion::Anomaly => "\x1b[1;31m",  // bold red
         Promotion::Elevated => "\x1b[1;33m", // bold yellow
-        Promotion::Normal   => "\x1b[0m",    // reset
+        Promotion::Normal => "\x1b[0m",      // reset
     }
 }
 

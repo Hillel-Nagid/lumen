@@ -1,10 +1,10 @@
 use std::io::{self, BufWriter, Write};
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 use anyhow::Context;
 
 use crate::cli::Args;
-use crate::clusterer::ShardedDrain;
+use crate::clusterer::{extract_run_counts, ShardedDrain};
 use crate::compressor::Compressor;
 use crate::error::Result;
 use crate::formatter::{Formatter, FormatterInput};
@@ -62,7 +62,7 @@ pub fn run_log_mode(args: Args, source: ingest::IngestSource, mode: InputMode) -
 
     // ── Create pipeline components ────────────────────────────────────────────
     let drain = ShardedDrain::from_args(&args);
-    let scorer = Scorer::new(cms);
+    let mut scorer = Scorer::new(cms);
     let compressor = Compressor::new(args.bytes_per_token, args.tokens);
     let formatter = Formatter::new(args.format, args.bytes_per_token, args.tokens, args.verbose);
     let multiline = MultilineConfig::from_char(args.multiline_start);
@@ -106,7 +106,8 @@ pub fn run_log_mode(args: Args, source: ingest::IngestSource, mode: InputMode) -
         drain.insert(&record);
     }
     let templates = drain.finalise();
-
+    let run_counts = extract_run_counts(&templates);
+    let template_count = templates.len() as u64;
     // ── Score ─────────────────────────────────────────────────────────────────
     let scored = scorer.score_and_rank(templates);
 
@@ -118,13 +119,31 @@ pub fn run_log_mode(args: Args, source: ingest::IngestSource, mode: InputMode) -
     let formatter_input = FormatterInput {
         entries,
         json_summary: None,
-        stats,
+        stats: stats.clone(),
     };
 
     let mut sink = open_sink(&args)?;
     formatter.render(formatter_input, &mut sink)?;
     sink.flush().context("flushing output")?;
-
+    if !args.no_state {
+        if let Some(slug) = effective_project_slug(&args) {
+            let source_name = args
+                .file
+                .as_ref()
+                .and_then(|p| p.to_str())
+                .unwrap_or("<stdin>")
+                .to_string();
+            save_state(
+                slug,
+                &mut scorer,
+                &run_counts,
+                args.cms_half_life,
+                source_name,
+                &stats,
+                template_count,
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -146,7 +165,7 @@ pub fn run_json_mode(args: Args, source: ingest::IngestSource) -> Result<()> {
     let (cms, _dict) = load_state(&args)?;
 
     let drain = ShardedDrain::from_args(&args);
-    let scorer = Scorer::new(cms);
+    let mut scorer = Scorer::new(cms);
     let compressor = Compressor::new(args.bytes_per_token, args.tokens);
     let formatter = Formatter::new(args.format, args.bytes_per_token, args.tokens, args.verbose);
 
@@ -173,6 +192,8 @@ pub fn run_json_mode(args: Args, source: ingest::IngestSource) -> Result<()> {
     }
     let templates = drain.finalise();
 
+    let run_counts = extract_run_counts(&templates);
+    let template_count = templates.len() as u64;
     let scored = scorer.score_and_rank(templates);
     let entries = compressor.compress(scored);
 
@@ -183,13 +204,25 @@ pub fn run_json_mode(args: Args, source: ingest::IngestSource) -> Result<()> {
     let formatter_input = FormatterInput {
         entries,
         json_summary: Some(json_summary),
-        stats,
+        stats: stats.clone(),
     };
 
     let mut sink = open_sink(&args)?;
     formatter.render(formatter_input, &mut sink)?;
     sink.flush().context("flushing output")?;
-
+    if !args.no_state {
+        if let Some(slug) = effective_project_slug(&args) {
+            save_state(
+                slug,
+                &mut scorer,
+                &run_counts,
+                args.cms_half_life,
+                source_name.clone(),
+                &stats,
+                template_count,
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -245,4 +278,36 @@ fn open_sink(args: &Args) -> Result<Box<dyn Write>> {
             Ok(Box::new(BufWriter::new(file)))
         }
     }
+}
+
+fn save_state(
+    slug: String,
+    scorer: &mut Scorer,
+    run_counts: &[(u64, u64)],
+    half_life_hours: f64,
+    source_name: String,
+    stats: &RunStats,
+    template_count: u64,
+) -> Result<()> {
+    let now_ts = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    scorer.flush_to_cms(&run_counts, now_ts, half_life_hours);
+    let store = StateStore::open(&slug)?;
+    store.save_cms(&scorer.cms())?;
+    let prev_meta = store.load_meta()?;
+    let run_index = prev_meta
+        .map(|m| m.run_index.saturating_add(1))
+        .unwrap_or(1);
+    let meta = crate::state::RunMeta {
+        run_index,
+        run_ts: now_ts,
+        source_name: source_name.clone(),
+        total_bytes: (&stats).total_bytes,
+        template_count,
+        dict_trained: false,
+    };
+    store.save_meta(&meta)?;
+    Ok(())
 }
