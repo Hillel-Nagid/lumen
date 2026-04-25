@@ -53,7 +53,6 @@ impl Default for ModeOverride {
 )]
 pub struct Args {
     // ── Input / output ────────────────────────────────────────────────────────
-
     /// Input file. Omit or pass '-' to read from stdin.
     #[arg(value_name = "FILE")]
     pub file: Option<PathBuf>,
@@ -75,7 +74,6 @@ pub struct Args {
     pub bytes_per_token: f64,
 
     // ── Mode & project identity ────────────────────────────────────────────────
-
     /// Processing mode override (§6.1).
     #[arg(long, value_enum, default_value = "auto")]
     pub mode: ModeOverride,
@@ -85,7 +83,6 @@ pub struct Args {
     pub project: Option<String>,
 
     // ── Resource limits ────────────────────────────────────────────────────────
-
     /// Worker thread count. Defaults to the number of logical CPUs.
     #[arg(long, value_name = "N")]
     pub threads: Option<usize>,
@@ -99,7 +96,6 @@ pub struct Args {
     pub memory_limit: u64,
 
     // ── Log-mode tuning (§7.4) ────────────────────────────────────────────────
-
     /// Drain Jaccard similarity threshold for cluster matching.
     #[arg(long, default_value = "0.5", value_name = "F")]
     pub sim_threshold: f64,
@@ -122,17 +118,20 @@ pub struct Args {
     pub multiline_start: Option<char>,
 
     // ── Scorer / CMS tuning (§8, §18.3) ──────────────────────────────────────
-
     /// Number of historic runs kept in the Count-Min Sketch.
     #[arg(long, default_value = "10", value_name = "N")]
     pub history_runs: usize,
 
     /// CMS time-weighted decay half-life in hours (§18.3). Default = 1 week.
-    #[arg(long, default_value = "168", value_name = "HOURS")]
-    pub cms_half_life: f64,
+    #[arg(
+        long = "cms-half-life",
+        visible_alias = "decay",
+        default_value = "168",
+        value_name = "HOURS"
+    )]
+    pub decay: f64,
 
     // ── State persistence ─────────────────────────────────────────────────────
-
     /// Disable all state persistence (CMS, Zstd dict, meta.json).
     #[arg(long)]
     pub no_state: bool,
@@ -146,7 +145,6 @@ pub struct Args {
     pub retrain_dict: bool,
 
     // ── JSON document mode (§6) ───────────────────────────────────────────────
-
     /// Focus output on the subtree at DOTPATH (e.g. "results[].detail").
     #[arg(long, value_name = "DOTPATH")]
     pub json_path: Option<String>,
@@ -173,7 +171,6 @@ pub struct Args {
     pub entropy_threshold: f64,
 
     // ── Verbosity ─────────────────────────────────────────────────────────────
-
     /// Print pipeline statistics to stderr after processing.
     #[arg(short = 'v', long)]
     pub verbose: bool,

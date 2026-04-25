@@ -768,7 +768,7 @@ Templates `A` and `B` are removed from their respective shards after merging. Th
 decay(run_i) = exp(-λ · Δt_i)
 ```
 
-where `Δt_i` is the number of hours since run `i` and `λ` is a configurable half-life parameter (`--cms-half-life`, default `168h` = 1 week). This ensures that a burst of daily runs does not over-represent a short period, and that a long gap does not keep stale templates artificially alive.
+where `Δt_i` is the number of hours since run `i` and `λ` is a configurable half-life parameter (`--decay`, default `168h` = 1 week). This ensures that a burst of daily runs does not over-represent a short period, and that a long gap does not keep stale templates artificially alive.
 
 ### 18.4 Token Budget Calibration
 

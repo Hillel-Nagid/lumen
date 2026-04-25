@@ -69,8 +69,6 @@ This roadmap closes those gaps in an order that keeps the main pipeline working 
 | **A6** | ✅ Complete | Wire post-run: `extract_run_counts` → `Scorer::flush_to_cms` → `StateStore::save_cms` + `save_meta` (extend meta to match §14 schema if needed) | §8, §14 | **M** | Use wall-clock `now` for decay; skip if `--no-state`. |
 | **A7** | ✅ Complete | End-to-end integration test: small fixture log → non-empty text output, no panic | §16 | **S** | Golden file optional in A7; can be follow-up. |
 
-**Dependency note:** A1 is complete. A4–A5 can now be stubbed in parallel once templates list is non-empty.
-
 ---
 
 ### Theme B — Parser depth (M2)
@@ -122,7 +120,7 @@ This roadmap closes those gaps in an order that keeps the main pipeline working 
 | **E3** | ⏳ Pending | Dictionary training: sample up to 100 MB raw text, `zstd::dict::from_samples`, `save_dict` | §9.3 | **M** | Train from bounded raw samples and persist `dict.zst`; skip cleanly when input/state constraints prevent training. |
 | **E4** | ⏳ Pending | Use trained dict for compressing CMS output / intermediate buffers where spec applies | §9.3 | **S** | Existing dictionaries are loaded and applied only where beneficial; missing/corrupt dict falls back without failing runs. |
 | **E5** | ⏳ Pending | Retrain triggers: after 50 runs or cosine distance > 0.3 between CMS histograms (define histogram representation) | §9.3 | **M** | Retraining decision is deterministic, documented in metadata, and avoids excessive retrain churn. |
-| **E6** | ⏳ Pending | CLI parity pass: spec lists `--decay`; code uses `--cms-half-life` — add alias or document single source of truth | §11 vs §18.3 | **S** | CLI help and spec agree; old flag names remain user-friendly if aliases are added. |
+| **E6** | ✅ Complete | CLI parity pass: spec lists `--decay`; code uses `--cms-half-life` — add alias or document single source of truth | §11 vs §18.3 | **S** | CLI help and spec agree; old flag names remain user-friendly if aliases are added. |
 
 ---
 

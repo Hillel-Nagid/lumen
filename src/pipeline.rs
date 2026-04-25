@@ -1,5 +1,5 @@
 use std::io::{self, BufWriter, Write};
-use std::time::{Instant, SystemTime};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 
@@ -137,7 +137,7 @@ pub fn run_log_mode(args: Args, source: ingest::IngestSource, mode: InputMode) -
                 slug,
                 &mut scorer,
                 &run_counts,
-                args.cms_half_life,
+                args.decay,
                 source_name,
                 &stats,
                 template_count,
@@ -216,7 +216,7 @@ pub fn run_json_mode(args: Args, source: ingest::IngestSource) -> Result<()> {
                 slug,
                 &mut scorer,
                 &run_counts,
-                args.cms_half_life,
+                args.decay,
                 source_name.clone(),
                 &stats,
                 template_count,
@@ -290,12 +290,12 @@ fn save_state(
     template_count: u64,
 ) -> Result<()> {
     let now_ts = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
+        .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs() as i64;
     scorer.flush_to_cms(&run_counts, now_ts, half_life_hours);
     let store = StateStore::open(&slug)?;
-    store.save_cms(&scorer.cms())?;
+    store.save_cms(scorer.cms())?;
     let prev_meta = store.load_meta()?;
     let run_index = prev_meta
         .map(|m| m.run_index.saturating_add(1))

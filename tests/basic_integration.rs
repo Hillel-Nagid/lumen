@@ -33,7 +33,7 @@ fn test_args(input: PathBuf, output: PathBuf) -> Args {
         min_cluster_size: 2,
         multiline_start: None,
         history_runs: 10,
-        cms_half_life: 168.0,
+        decay: 168.0,
         no_state: true,
         reset_state: false,
         retrain_dict: false,
