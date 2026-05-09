@@ -70,6 +70,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # State management (§14)
 dirs      = "5"     # platform-specific state directories
 crc32fast = "1"     # CRC32 header for cms.bin corruption detection
+regex = "1.12.3"
 
 # SIGPIPE handling on Unix (§15)
 [target.'cfg(unix)'.dependencies]

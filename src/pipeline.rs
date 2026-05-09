@@ -10,7 +10,7 @@ use crate::error::Result;
 use crate::formatter::{Formatter, FormatterInput};
 use crate::ingest::{self, detect::InputMode};
 use crate::json::JsonDocAnalyzer;
-use crate::parser::{types::RunStats, MultilineConfig, Parser};
+use crate::parser::{fold_multiline, types::RunStats, MultilineConfig, Parser};
 use crate::scorer::{cms::CountMinSketch, Scorer};
 use crate::state::StateStore;
 
@@ -75,8 +75,7 @@ pub fn run_log_mode(args: Args, source: ingest::IngestSource, mode: InputMode) -
 
     // ── Detect format and parse lines ─────────────────────────────────────────
     // TODO(§4.2): replace with rayon parallel chunk processing.
-    // TODO(§5.1): sample first 1,000 lines for format detection.
-    let mut parser = Parser::new(multiline);
+    let mut parser = Parser::new(multiline.clone());
     // Collect first 1000 lines (as &[u8]) for format detection
     let sample_lines = ingest::LineIter::new(&data).take_non_empty(1000);
     parser.detect_format(&sample_lines);
@@ -89,13 +88,45 @@ pub fn run_log_mode(args: Args, source: ingest::IngestSource, mode: InputMode) -
     // For the boilerplate we iterate synchronously to keep the borrow checker happy.
     {
         let line_iter = ingest::LineIter::new(&data);
+        let mut anchor_line = None;
+        let mut anchor_indent: usize = 0;
+        let mut anchor_offset: u64 = 0;
+        let mut continuations = Vec::new();
         for line in line_iter {
-            let (record, _raw) = parser.parse_line(line, byte_offset);
-            let owned = record.to_owned();
-            byte_offset += line.len() as u64 + 1;
             stats.total_lines += 1;
-            // Send to drain. Channel bounded at 8192 to bound memory.
-            let _ = record_tx.send(owned);
+            if anchor_line.is_none() {
+                anchor_line = Some(line);
+                anchor_indent = line.iter().take_while(|b| b.is_ascii_whitespace()).count();
+                anchor_offset = byte_offset;
+                byte_offset += line.len() as u64 + 1;
+                continue;
+            }
+            if multiline.is_new_record(line, anchor_indent) {
+                let anchor = anchor_line.take().unwrap();
+                let (record, raw) = parser.parse_line(anchor, anchor_offset);
+                if raw {
+                    stats.unparseable_lines += 1;
+                }
+                let owned = record.to_owned();
+                let fold = fold_multiline(owned, &continuations);
+                let _ = record_tx.send(fold);
+                continuations.clear();
+                anchor_line = Some(line);
+                anchor_indent = line.iter().take_while(|b| b.is_ascii_whitespace()).count();
+                anchor_offset = byte_offset;
+            } else {
+                continuations.push(line);
+            }
+            byte_offset += line.len() as u64 + 1;
+        }
+        if let Some(anchor) = anchor_line {
+            let (record, raw) = parser.parse_line(anchor, anchor_offset);
+            if raw {
+                stats.unparseable_lines += 1;
+            }
+            let owned = record.to_owned();
+            let fold = fold_multiline(owned, &continuations);
+            let _ = record_tx.send(fold);
         }
         drop(record_tx); // signal EOF to the drain side
     }

@@ -69,14 +69,6 @@ impl DrainShard {
 
     /// Insert a record into this shard's Drain tree.
     ///
-    /// TODO(§7.1–7.2): Full Drain algorithm:
-    /// 1. Tokenise `record.message` into words.
-    /// 2. Look up the word-count bucket in `self.root`.
-    /// 3. Walk the prefix tree using the leading tokens (up to `self.depth`).
-    /// 4. At the leaf, find the cluster with highest Jaccard similarity ≥ `sim_threshold`.
-    /// 5. If found: update the template (wildcard new variable positions, update count).
-    /// 6. If not found: create a new template with all tokens as Literals.
-    /// 7. If an interior node exceeds `max_children`, descend into its wildcard child.
     pub fn insert(&mut self, record: &OwnedLogRecord) {
         let tokens = tokenise(&*record.message);
         let word_count = tokens.len();

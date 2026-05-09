@@ -60,7 +60,6 @@ fn a7_log_fixture_produces_non_empty_text_output() {
 ";
 
     fs::write(&input_path, fixture).expect("write input fixture");
-
     let args = test_args(input_path.clone(), output_path.clone());
     let run_result = pipeline::run(args);
 

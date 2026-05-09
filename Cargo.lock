@@ -767,6 +767,7 @@ dependencies = [
  "memmap2",
  "proptest",
  "rayon",
+ "regex",
  "serde",
  "serde_json",
  "simd-json",

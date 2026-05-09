@@ -1,5 +1,7 @@
 pub mod types;
 
+use regex::Regex;
+use std::{os::raw, sync::OnceLock};
 use types::{Field, Level, LogRecord, OwnedLogRecord, RecordSource};
 
 // ── Format hint ───────────────────────────────────────────────────────────────
@@ -26,16 +28,28 @@ impl FormatHint {
     /// Any subsequent line that fails to parse under the detected format
     /// falls through to `Raw`.
     ///
-    /// TODO(§5.1): implement full heuristic scoring:
     /// - JSON: simd-json to_tape on sample lines
     /// - Logfmt: count `key=value` occurrences  
     /// - CommonLog: match Apache CLF regex approximation
     /// - Syslog: check for RFC 5424 PRI field `<N>`
     pub fn detect(sample_lines: &[&[u8]]) -> Self {
-        let _ = sample_lines;
+        if is_json_sample(sample_lines) {
+            return FormatHint::JsonLines;
+        }
+        if is_logfmt_sample(sample_lines) {
+            return FormatHint::Logfmt;
+        }
+        if is_common_log_sample(sample_lines) {
+            return FormatHint::CommonLog;
+        }
+        if is_syslog_sample(sample_lines) {
+            return FormatHint::Syslog;
+        }
         FormatHint::Raw
     }
 }
+
+const DETECTION_THRESHOLD: f64 = 0.8;
 
 // ── Multiline folder ──────────────────────────────────────────────────────────
 
@@ -164,8 +178,169 @@ pub fn make_raw_record(line: &[u8], byte_offset: u64) -> LogRecord<'_> {
 ///
 /// `anchor` is the first line (already parsed as a `LogRecord`).
 /// `continuations` are the subsequent indented / continuation lines.
-pub fn fold_multiline(anchor: OwnedLogRecord, _continuations: &[&[u8]]) -> OwnedLogRecord {
-    // TODO(§18.1): append continuation lines to anchor.raw_line,
-    // preserving the first line as anchor.message.
+pub fn fold_multiline(mut anchor: OwnedLogRecord, continuations: &[&[u8]]) -> OwnedLogRecord {
+    if continuations.is_empty() {
+        return anchor;
+    }
+
+    let extra_bytes: usize = continuations.iter().map(|line| line.len() + 1).sum();
+    let mut combined = Vec::with_capacity(anchor.raw_line.len() + extra_bytes);
+    combined.extend_from_slice(&anchor.raw_line);
+    for line in continuations {
+        combined.push(b'\n');
+        combined.extend_from_slice(line);
+    }
+    anchor.raw_line = combined.into_boxed_slice();
     anchor
+}
+
+fn is_json_sample(sample: &[&[u8]]) -> bool {
+    let mut total = 0usize;
+    let mut valid_json_lines = 0usize;
+    let mut scratch = Vec::new();
+
+    for line in sample {
+        if is_blank_line(line) {
+            continue;
+        }
+        total += 1;
+
+        scratch.clear();
+        scratch.extend_from_slice(line);
+        if simd_json::to_tape(&mut scratch).is_ok() {
+            valid_json_lines += 1;
+        }
+    }
+
+    ratio(valid_json_lines, total) >= DETECTION_THRESHOLD
+}
+
+fn is_logfmt_sample(sample: &[&[u8]]) -> bool {
+    let mut total = 0usize;
+    let mut valid_logfmt_lines = 0usize;
+
+    for line in sample {
+        if is_blank_line(line) {
+            continue;
+        }
+        total += 1;
+
+        if is_key_val(line) {
+            valid_logfmt_lines += 1;
+        }
+    }
+
+    ratio(valid_logfmt_lines, total) >= DETECTION_THRESHOLD
+}
+
+fn is_common_log_sample(sample: &[&[u8]]) -> bool {
+    let mut total = 0usize;
+    let mut valid_common_log_lines = 0usize;
+
+    for line in sample {
+        if is_blank_line(line) {
+            continue;
+        }
+        total += 1;
+
+        if is_common_log_line(line) {
+            valid_common_log_lines += 1;
+        }
+    }
+
+    ratio(valid_common_log_lines, total) >= DETECTION_THRESHOLD
+}
+
+fn is_syslog_sample(sample: &[&[u8]]) -> bool {
+    let mut total = 0usize;
+    let mut valid_syslog_lines = 0usize;
+
+    for line in sample {
+        if is_blank_line(line) {
+            continue;
+        }
+        total += 1;
+
+        if is_syslog_line(line) {
+            valid_syslog_lines += 1;
+        }
+    }
+
+    ratio(valid_syslog_lines, total) >= DETECTION_THRESHOLD
+}
+
+fn is_key_val(line: &[u8]) -> bool {
+    if let Some(index) = line.iter().position(|&b| b == b'=') {
+        let (key, value) = line.split_at(index);
+        if key.is_empty() || value.is_empty() {
+            return false;
+        }
+        return value.iter().find(|&b| *b == b'=').is_none();
+    }
+    false
+}
+fn is_syslog_line(line: &[u8]) -> bool {
+    if line.len() < 3 {
+        return false;
+    }
+    if !line.starts_with(b"<") {
+        return false;
+    }
+
+    let Some(end) = line.iter().position(|&b| b == b'>') else {
+        return false;
+    };
+    // PRI must be 1-3 digits in range 0..=191.
+    if !(2..=4).contains(&end) {
+        return false;
+    }
+
+    let mut pri = 0u16;
+    for &b in &line[1..end] {
+        if !b.is_ascii_digit() {
+            return false;
+        }
+        pri = pri.saturating_mul(10) + u16::from(b - b'0');
+        if pri > 191 {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn is_common_log_line(line: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(line) else {
+        return false;
+    };
+    common_log_regex().is_match(text)
+}
+
+fn common_log_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r#"(?x)
+        ^(?P<ip>\S+)\s+
+        (?P<ident>\S+)\s+
+        (?P<user>\S+)\s+
+        \[(?P<time>[\w:\/]+\s[+\-]\d{4})\]\s+
+        "(?P<request>.+?)"\s+
+        (?P<status>\d{3})\s+
+        (?P<bytes>\d+|-)
+        $"#,
+        )
+        .expect("invalid common log regex")
+    })
+}
+
+fn is_blank_line(line: &[u8]) -> bool {
+    line.iter().all(|b| b.is_ascii_whitespace())
+}
+
+fn ratio(valid: usize, total: usize) -> f64 {
+    if total == 0 {
+        return 0.0;
+    }
+    valid as f64 / total as f64
 }
